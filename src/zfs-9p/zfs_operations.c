@@ -1,0 +1,197 @@
+
+
+
+#include <sys/statfs.h>
+#include <sys/statvfs.h>
+#include <sys/debug.h>
+#include <sys/vnode.h>
+#include <sys/cred_impl.h>
+#include <sys/zfs_vfsops.h>
+#include <sys/zfs_znode.h>
+#include <sys/mode.h>
+#include <attr/xattr.h>
+#include <sys/fcntl.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <time.h>
+#include <syslog.h>
+
+#include <ixp.h>
+#include "util.h"
+
+
+//TODO: this must be inicialized at some point
+vfs_t *vfs;
+
+static int openFile(vnode_t *vp, int mode, int flags, cred_t cred){
+	int error=0;
+	if (!(flags & FOFFMAX) && (vp->v_type == VREG)) {
+		vattr_t vattr;
+		vattr.va_mask = AT_SIZE;
+		if ((error = VOP_GETATTR(vp, &vattr, 0, &cred, NULL)))
+			return error;
+
+		if (vattr.va_size > (u_offset_t) MAXOFF32_T) {
+			/*
+			 * Large File API - regular open fails
+			 * if FOFFMAX flag is set in file mode
+			 */
+			error = EOVERFLOW;
+			return error;
+		}
+	}
+
+	/*
+	 * Check permissions.
+	 */
+	if (error = VOP_ACCESS(vp, mode, 0, &cred, NULL)) {
+		print_debug("open fails on access\n");
+		return error;
+	}
+	
+	
+	if ((flags & FNOFOLLOW) && vp->v_type == VLNK) {
+		error = ELOOP;
+		return error;
+	}
+
+	vnode_t *old_vp = vp;
+
+	error = VOP_OPEN(&vp, flags, &cred, NULL);
+
+	ASSERT(old_vp == vp);
+
+	return error;
+}
+
+void zfs_attach(Ixp9Req* r){
+	r->fid->qid.type = P9_QTDIR;
+	r->fid->qid.path = 0;
+	r->fid->qid.version = 0;
+	r->ofcall.rattach.qid = r->fid->qid;
+	ixp_respond(r, NULL);
+}
+
+void zfs_create(Ixp9Req* r){
+	int error;
+	
+	if(r->ifcall.tcreate.name && strlen(r->ifcall.tcreate.name) >= MAXNAMELEN){
+		ixp_respond(r, "zfs_nameTooLong");
+		return;
+	}
+	
+	
+	zfsvfs_t *zfsvfs = vfs->vfs_data;
+	ZFS_ENTER(zfsvfs, error);
+	if(error){
+		ixp_respond(r, "zfs_enterError");
+		return;
+	}
+	
+	//Set credentials
+	cred_t cred;
+	cred.cr_uid=0;
+	cred.cr_gid=0;
+	
+	/* Map flags */
+	int mode, flags, excl=NONEXCL;
+
+	if(r->ifcall.tcreate.mode & P9_OWRITE) {
+		mode = VWRITE;
+		flags = FWRITE;
+	} else if(r->ifcall.tcreate.mode & P9_ORDWR) {
+		mode = VREAD | VWRITE;
+		flags = FREAD | FWRITE;
+	} else {
+		mode = VREAD;
+		flags = FREAD;
+	}
+
+	if(r->ifcall.tcreate.mode & P9_OAPPEND)
+		flags |= FAPPEND;
+//	if(r->fid->omode & O_LARGEFILE)
+//		flags |= FOFFMAX;
+	if(r->ifcall.tcreate.mode & P9_OTRUNC)
+		flags |= FTRUNC;
+	if(r->fid->omode & P9_OEXCL)
+		excl=EXCL;
+
+
+	znode_t *znode;
+
+	error = zfs_zget(zfsvfs, r->fid->qid.path, &znode, B_FALSE);
+	if(error) {
+		ZFS_EXIT(zfsvfs);
+		/* If the inode we are trying to get was recently deleted
+		   dnode_hold_impl will return EEXIST instead of ENOENT */
+		char aux[6];
+		sprintf(aux, "%d", error);
+		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		return;
+	}
+	
+	if(znode==NULL){
+		ixp_respond(r,"znodenil");
+		return;
+	}
+	vnode_t *vp = ZTOV(znode);
+	vnode_t *new_vp;
+	
+	vattr_t vattr = { 0 };
+	if(r->ifcall.tcreate.perm & P9_DMDIR){
+		vattr.va_type = VDIR;
+		vattr.va_mode = PERMMASK;
+		vattr.va_mask = AT_TYPE | AT_MODE;
+		error = VOP_MKDIR(vp, r->ifcall.tcreate.name, &vattr, &new_vp, &cred, NULL, 0, NULL);
+	} else {
+		vattr.va_type = VREG;
+		//TODO: review the va_mode value
+		vattr.va_mode = 0;
+		vattr.va_mask = AT_TYPE|AT_MODE;
+		if (flags & FTRUNC) {
+			vattr.va_size = 0;
+			vattr.va_mask |= AT_SIZE;
+		}
+
+		/* FIXME: check filesystem boundaries */
+		error = VOP_CREATE(vp, r->ifcall.tcreate.name, &vattr, excl, mode, &new_vp, &cred, 0, NULL, NULL);
+		
+		if(!error){
+			error=openFile(new_vp, mode, flags, cred);
+		}
+	}
+	
+	if(error) {
+		ASSERT(vp->v_count > 0);
+		VN_RELE(vp);
+	}
+
+	r->fid->qid.path=VTOZ(vp)->z_id;
+	r->fid->qid.version=0;
+	if(r->ifcall.tcreate.perm & P9_DMDIR)
+		r->fid->qid.type=P9_QTDIR;
+	else
+		r->fid->qid.type=(excl==EXCL)?P9_QTEXCL:P9_QTFILE;
+	r->fid->omode;
+	r->ofcall.rcreate.qid = r->fid->qid;
+
+	ZFS_EXIT(zfsvfs);
+
+	ixp_respond(r, NULL);
+}
+
+
+Ixp9Srv p9srv = {
+//	.open=
+//	.walk=
+//	.read=
+//	.stat=
+//	.write=
+//	.clunk=
+//	.flush=
+	.attach=zfs_attach,
+	.create=zfs_create
+//	.remove=
+//	.freefid=
+};

@@ -113,6 +113,7 @@ SConscript('cmd/zpool/SConscript')
 SConscript('cmd/zstreamdump/SConscript')
 SConscript('cmd/zfs/SConscript')
 SConscript('zfs-fuse/SConscript')
+SConscript('zfs-9p/SConscript')
 
 env.Install(install_dir, 'cmd/zdb/zdb')
 env.Install(install_dir, 'cmd/ztest/ztest')
