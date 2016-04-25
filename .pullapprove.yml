@@ -3,5 +3,16 @@ approve_regex: '^(LGTM|:\+1:|\+1)'
 reject_regex: '^(NMW|:-1:|-1)'
 reset_on_push: true
 reviewers:
+  members:
+  - 0intro
+  - aki5
+  - dancrossnyc
+  - elbing
+  - floren
+  - fuchicar
+  - hdonnay
+  - keedon
+  - rminnich
+  - sevki
   name: Harvey-OS/core
   required: 1
