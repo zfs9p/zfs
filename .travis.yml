@@ -1,0 +1,4 @@
+language: cpp
+before_install:
+  - sudo apt-get install -y libfuse-dev zlib1g-dev libaio-dev libssl-dev libattr1-dev
+script: cd src; scons
