@@ -1,4 +1,7 @@
+sudo: required
+dist: trusty
 language: cpp
 before_install:
-  - sudo apt-get install -y libfuse-dev zlib1g-dev libaio-dev libssl-dev libattr1-dev
+  - sudo apt-get update
+  - sudo apt-get install -y libfuse-dev zlib1g-dev libaio-dev libssl-dev libattr1-dev libixp-dev
 script: cd src; scons
