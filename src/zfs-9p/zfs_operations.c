@@ -24,7 +24,8 @@
 //TODO: this must be inicialized at some point
 vfs_t *vfs;
 
-static int openFile(vnode_t *vp, int mode, int flags, cred_t cred){
+static int
+openFile(vnode_t *vp, int mode, int flags, cred_t cred){
 	int error=0;
 	if (!(flags & FOFFMAX) && (vp->v_type == VREG)) {
 		vattr_t vattr;
@@ -65,7 +66,8 @@ static int openFile(vnode_t *vp, int mode, int flags, cred_t cred){
 	return error;
 }
 
-void zfs_attach(Ixp9Req* r){
+void
+zfs_attach(Ixp9Req* r){
 	r->fid->qid.type = P9_QTDIR;
 	r->fid->qid.path = 0;
 	r->fid->qid.version = 0;
@@ -73,7 +75,32 @@ void zfs_attach(Ixp9Req* r){
 	ixp_respond(r, NULL);
 }
 
-void zfs_create(Ixp9Req* r){
+void
+mapFlags(int fileMode, int *mode, int *flags, int *excl){
+	*excl=NONEXCL;
+	if(fileMode & P9_OWRITE) {
+		*mode = VWRITE;
+		*flags = FWRITE;
+	} else if(fileMode & P9_ORDWR) {
+		*mode = VREAD | VWRITE;
+		*flags = FREAD | FWRITE;
+	} else {
+		*mode = VREAD;
+		*flags = FREAD;
+	}
+
+	if(fileMode & P9_OAPPEND)
+		*flags |= FAPPEND;
+//	if(r->fid->omode & O_LARGEFILE)
+//		*flags |= FOFFMAX;
+	if(fileMode & P9_OTRUNC)
+		*flags |= FTRUNC;
+	if(fileMode & P9_OEXCL)
+		*excl=EXCL;
+}
+
+void
+zfs_create(Ixp9Req* r){
 	int error;
 	
 	if(r->ifcall.tcreate.name && strlen(r->ifcall.tcreate.name) >= MAXNAMELEN){
@@ -95,27 +122,9 @@ void zfs_create(Ixp9Req* r){
 	cred.cr_gid=0;
 	
 	/* Map flags */
-	int mode, flags, excl=NONEXCL;
-
-	if(r->ifcall.tcreate.mode & P9_OWRITE) {
-		mode = VWRITE;
-		flags = FWRITE;
-	} else if(r->ifcall.tcreate.mode & P9_ORDWR) {
-		mode = VREAD | VWRITE;
-		flags = FREAD | FWRITE;
-	} else {
-		mode = VREAD;
-		flags = FREAD;
-	}
-
-	if(r->ifcall.tcreate.mode & P9_OAPPEND)
-		flags |= FAPPEND;
-//	if(r->fid->omode & O_LARGEFILE)
-//		flags |= FOFFMAX;
-	if(r->ifcall.tcreate.mode & P9_OTRUNC)
-		flags |= FTRUNC;
-	if(r->fid->omode & P9_OEXCL)
-		excl=EXCL;
+	int mode, flags, excl;
+	mapFlags(r->ifcall.tcreate.mode, &mode, &flags, &excl);
+	
 
 
 	znode_t *znode;
@@ -167,18 +176,61 @@ void zfs_create(Ixp9Req* r){
 		VN_RELE(vp);
 	}
 
-	r->fid->qid.path=VTOZ(vp)->z_id;
+	r->fid->aux = new_vp;
+	r->fid->qid.path=VTOZ(new_vp)->z_id;
 	r->fid->qid.version=0;
 	if(r->ifcall.tcreate.perm & P9_DMDIR)
 		r->fid->qid.type=P9_QTDIR;
 	else
 		r->fid->qid.type=(excl==EXCL)?P9_QTEXCL:P9_QTFILE;
-	r->fid->omode;
+	r->fid->omode=r->ifcall.tcreate.mode;
 	r->ofcall.rcreate.qid = r->fid->qid;
 
 	ZFS_EXIT(zfsvfs);
 
 	ixp_respond(r, NULL);
+}
+
+void
+zfs_clunk(Ixp9Req *r){
+	int error;
+	
+	zfsvfs_t *zfsvfs = vfs->vfs_data;
+	ZFS_ENTER(zfsvfs, error);
+	if(error){
+		ixp_respond(r, "zfs_enterError");
+		return;
+	}
+	
+	vnode_t *vp = r->fid->aux;
+	if(vp == NULL){
+		ixp_respond(r, "filenotopen");
+		return;
+	}
+	if(VTOZ(vp)->z_id != r->fid->qid.path){
+		ixp_respond(r, "badinode");
+	}
+	
+	/* Map flags */
+	int mode, flags, excl;
+	mapFlags(r->fid->omode, &mode, &flags, &excl);
+	
+	//Set credentials
+	cred_t cred;
+	cred.cr_uid=0;
+	cred.cr_gid=0;
+
+	error = VOP_CLOSE(vp, flags, 1, (offset_t) 0, &cred, NULL);
+
+	if(error){
+		ixp_respond(r, "clunkFailed");
+	}else{
+		VN_RELE(vp);
+		free(r->fid->aux);
+		ixp_respond(r, NULL);
+	}
+
+	ZFS_EXIT(zfsvfs);	
 }
 
 

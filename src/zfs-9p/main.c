@@ -3,12 +3,13 @@
 
 
 extern Ixp9Srv p9srv;
+static IxpServer server;
 
 int
 main(){
 	IxpConn *conn;
-	IxpServer server;
-	char *address = "tcp!localhost!1441";
+	
+	char *address = "tcp!*!1441";
 	int fd;
 	
 	fd = ixp_announce(address);
