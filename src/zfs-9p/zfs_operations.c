@@ -233,14 +233,67 @@ zfs_clunk(Ixp9Req *r){
 	ZFS_EXIT(zfsvfs);	
 }
 
+void
+zfs_write(Ixp9Req *r) {
+	int error;
+
+	vnode_t *vp = r->fid->aux;
+	if(vp == NULL){
+		ixp_respond(r, "filenotopen");
+		return;
+	}
+	if(VTOZ(vp)->z_id != r->fid->qid.path){
+		ixp_respond(r, "badinode");
+	}
+
+	zfsvfs_t *zfsvfs = vfs->vfs_data;
+	ZFS_ENTER(zfsvfs, error);
+	if(error){
+		ixp_respond(r, "zfs_enterError");
+		return;
+	}
+
+	iovec_t iovec;
+	uio_t uio;
+	uio.uio_iov = &iovec;
+	uio.uio_iovcnt = 1;
+	uio.uio_segflg = UIO_SYSSPACE;
+	uio.uio_fmode = 0;
+	uio.uio_llimit = RLIM64_INFINITY;
+
+	iovec.iov_base = r->ifcall.twrite.data;
+	iovec.iov_len = r->ifcall.twrite.count;
+	uio.uio_resid = iovec.iov_len;
+	uio.uio_loffset = r->ifcall.twrite.offset;
+
+	//Set credentials
+	cred_t cred;
+	cred.cr_uid=0;
+	cred.cr_gid=0;
+
+	/* Map flags */
+	int mode, flags, excl;
+	mapFlags(r->fid->omode, &mode, &flags, &excl);
+
+	error = VOP_WRITE(vp, &uio, flags, &cred, NULL);
+	r->ofcall.rwrite.count = r->ifcall.twrite.count - uio.uio_resid;
+
+	if(error){
+		ixp_respond(r, "writtingError");
+	} else {
+		ixp_respond(r, NULL);
+	}
+
+	ZFS_EXIT(zfsvfs);
+}
 
 Ixp9Srv p9srv = {
 //	.open=
 //	.walk=
 //	.read=
 //	.stat=
-//	.write=
-//	.clunk=
+	.write=zfs_write,
+	.clunk=zfs_clunk,
 //	.flush=
 	.attach=zfs_attach,
 	.create=zfs_create
