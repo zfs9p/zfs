@@ -2529,7 +2529,6 @@ zfs_ioc_get_fsacl(zfs_cmd_t *zc)
 static vfs_t *
 zfs_get_vfs(const char *resource)
 {
-	printf("resource: <%s>\n", resource);
 	struct vfs *vfsp;
 	struct vfs *vfs_found = NULL;
 

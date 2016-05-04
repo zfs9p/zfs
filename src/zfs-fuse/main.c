@@ -416,7 +416,6 @@ static void read_cfg() {
 
 int main(int argc, char *argv[])
 {
-	printf("\n\n Lo petamos!!! \n\n");
     VERIFY(0 == sem_init(&daemon_shutdown, 0, 0));
     init_mmap();
 	/* one sane default a day keeps GDB away - Rudd-O */
