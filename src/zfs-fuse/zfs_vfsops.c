@@ -1071,6 +1071,7 @@ zfs_set_fuid_feature(zfsvfs_t *zfsvfs)
 static int
 zfs_domount(vfs_t *vfsp, char *osname)
 {
+	printf("osname: <%s>\n", osname);
 	dev_t mount_dev;
 	uint64_t recordsize, fsid_guid;
 	int error = 0;

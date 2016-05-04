@@ -48,7 +48,7 @@
 
 #define ZFS_MAGIC 0x2f52f5
 
-// #define VERBOSE
+#define VERBOSE
 
 #ifdef VERBOSE
 #define print_debug printf
@@ -158,7 +158,9 @@ static int zfsfuse_stat(vnode_t *vp, struct stat *stbuf, cred_t *cred)
 static int zfsfuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 {
     print_debug("function %s\n",__FUNCTION__);
+    printf("inode %d\n", ino);
 	vfs_t *vfs = (vfs_t *) fuse_req_userdata(req);
+	printf("vfs resource: %s\n", refstr_value(vfs->vfs_resource));
 	zfsvfs_t *zfsvfs = vfs->vfs_data;
 
 	ZFS_ENTER(zfsvfs);

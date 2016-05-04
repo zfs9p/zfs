@@ -307,6 +307,8 @@ static int detect_fuseoption(const char* options, const char* option)
 
 int do_mount(char *spec, char *dir, int mflag, char *opt)
 {
+	
+	printf("Mount spec: <%s> dir: <%s>\n", spec, dir);
 	VERIFY(mflag == 0);
 
 	vfs_t *vfs = kmem_zalloc(sizeof(vfs_t), KM_SLEEP);
