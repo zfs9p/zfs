@@ -2,8 +2,9 @@
  * CDDL HEADER START
  *
  * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
+ * Common Development and Distribution License, Version 1.0 only
+ * (the "License").  You may not use this file except in compliance
+ * with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
  * or http://www.opensolaris.org/os/licensing.
@@ -19,26 +20,22 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2006 Ricardo Correia.
+ * Copyright 2006 Ricardo Correia.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef ZFSFUSE_UTIL_H
-#define ZFSFUSE_UTIL_H
+#ifndef ZFSFUSE_IOCTL_H
+#define ZFSFUSE_IOCTL_H
 
+#include <sys/zfs_ioctl.h>
 #include <sys/types.h>
-#include <sys/vfs.h>
 
-extern int do_init();
-extern int do_init_fusesocket();
-extern void do_daemon(const char *pidfile);
-extern void do_exit();
-extern int do_mount(char *spec, char *dir, int mflag, char *opt);
-extern int do_umount(vfs_t *vfs, boolean_t force);
+extern __thread int cur_fd;
 
-extern char * fuse_mount_options; /* run-time mount options */
-void print_debug(const char *fmt, ...);
-char *getUserName(uid_t uid);
-char *getGroupName(gid_t gid);
+extern int zfsfuse_socket_create();
+extern void zfsfuse_socket_close(int fd);
+
+extern int zfsfuse_socket_read_loop(int fd, void *buf, int bytes);
+extern int zfsfuse_socket_ioctl_write(int fd, int ret);
 
 #endif

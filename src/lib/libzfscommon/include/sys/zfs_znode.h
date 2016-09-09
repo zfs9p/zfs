@@ -243,7 +243,7 @@ typedef struct znode {
  * ZFS_VERIFY_ZP() verifies the znode is valid.
  */
 #ifdef HARVEY
-#define ZFS_ENTER(zfsvfs,error) \
+#define ZFS_ENTER_9P(zfsvfs,error) \
         { \
                 rrw_enter(&(zfsvfs)->z_teardown_lock, RW_READER, FTAG); \
                 if ((zfsvfs)->z_unmounted) { \
@@ -252,7 +252,7 @@ typedef struct znode {
                 } \
         }
 
-#else
+#endif
 #define	ZFS_ENTER(zfsvfs) \
 	{ \
 		rrw_enter(&(zfsvfs)->z_teardown_lock, RW_READER, FTAG); \
@@ -261,7 +261,6 @@ typedef struct znode {
 			return (EIO); \
 		} \
 	}
-#endif
 
 #define	ZFS_EXIT(zfsvfs) rrw_exit(&(zfsvfs)->z_teardown_lock, FTAG)
 

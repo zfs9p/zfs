@@ -39,6 +39,17 @@ if osname == "Linux":
 
 debug = int(ARGUMENTS.get('debug', '0'))
 optim = ARGUMENTS.get('optim', '-O2')
+harvey = ARGUMENTS.get('harvey','')
+
+env['CPPPATH'] = []
+env['OBJECTS'] = []
+
+env.Append(CCFLAGS = ['-DHARVEY'])
+if harvey == '':
+	env.Append(LIBS = ['ixp'])
+else:
+	env.Append(OBJECTS = [harvey + '/lib/libixp.a'])
+	env.Append(CPPPATH = [harvey + '/include'])
 
 if not debug:
 	env.Append(LINKFLAGS = ['-s'])
@@ -59,8 +70,6 @@ if not (('-DDEBUG' in env['CCFLAGS']) or
 	print
 	print "Misconfigured debug level: Neither DEBUG or NDEBUG appears to have been defined: %s" % env['CCFLAGS']
 	sys.exit(1)
-
-env['CPPPATH'] = []
 
 f = os.popen('uname -m')
 arch = f.readline().strip()

@@ -23,22 +23,28 @@
  * Use is subject to license terms.
  */
 
-#ifndef ZFSFUSE_UTIL_H
-#define ZFSFUSE_UTIL_H
+#ifndef ZFSFUSE_LISTENER_H
+#define ZFSFUSE_LISTENER_H
 
 #include <sys/types.h>
-#include <sys/vfs.h>
+#include <sys/kmem.h>
+#include <sys/vnode.h>
 
-extern int do_init();
-extern int do_init_fusesocket();
-extern void do_daemon(const char *pidfile);
-extern void do_exit();
-extern int do_mount(char *spec, char *dir, int mflag, char *opt);
-extern int do_umount(vfs_t *vfs, boolean_t force);
+#include "fuse.h"
 
-extern char * fuse_mount_options; /* run-time mount options */
-void print_debug(const char *fmt, ...);
-char *getUserName(uid_t uid);
-char *getGroupName(gid_t gid);
+typedef struct file_info {
+	vnode_t *vp;
+	int flags;
+} file_info_t;
+
+extern kmem_cache_t *file_info_cache;
+
+extern boolean_t exit_fuse_listener;
+
+extern int zfsfuse_listener_init();
+extern int zfsfuse_listener_start();
+extern int zfsfuse_listener_stop();
+extern void zfsfuse_listener_exit();
+extern int zfsfuse_newfs(char *mntpoint, struct fuse_chan *ch);
 
 #endif

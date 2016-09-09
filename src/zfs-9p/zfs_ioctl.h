@@ -19,26 +19,19 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2006 Ricardo Correia.
+ * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef ZFSFUSE_UTIL_H
-#define ZFSFUSE_UTIL_H
+#ifndef ZFS_IOCTL_H
+#define ZFS_IOCTL_H
 
 #include <sys/types.h>
-#include <sys/vfs.h>
+#include <sys/cred.h>
 
-extern int do_init();
-extern int do_init_fusesocket();
-extern void do_daemon(const char *pidfile);
-extern void do_exit();
-extern int do_mount(char *spec, char *dir, int mflag, char *opt);
-extern int do_umount(vfs_t *vfs, boolean_t force);
+extern int zfsdev_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp);
 
-extern char * fuse_mount_options; /* run-time mount options */
-void print_debug(const char *fmt, ...);
-char *getUserName(uid_t uid);
-char *getGroupName(gid_t gid);
+extern int zfs_ioctl_init();
+extern int zfs_ioctl_fini();
 
 #endif

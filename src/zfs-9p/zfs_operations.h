@@ -23,22 +23,17 @@
  * Use is subject to license terms.
  */
 
-#ifndef ZFSFUSE_UTIL_H
-#define ZFSFUSE_UTIL_H
+#ifndef ZFS_OPERATIONS_H
+#define ZFS_OPERATIONS_H
 
-#include <sys/types.h>
-#include <sys/vfs.h>
+#include "fuse.h"
 
-extern int do_init();
-extern int do_init_fusesocket();
-extern void do_daemon(const char *pidfile);
-extern void do_exit();
-extern int do_mount(char *spec, char *dir, int mflag, char *opt);
-extern int do_umount(vfs_t *vfs, boolean_t force);
+extern struct fuse_lowlevel_ops zfs_operations;
 
-extern char * fuse_mount_options; /* run-time mount options */
-void print_debug(const char *fmt, ...);
-char *getUserName(uid_t uid);
-char *getGroupName(gid_t gid);
+/* variables documented in zfs_operations.c */
+extern int block_cache;
+extern int page_cache;
+extern int cf_enable_xattr;
+extern float fuse_attr_timeout, fuse_entry_timeout;
 
 #endif
