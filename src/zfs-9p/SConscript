@@ -6,4 +6,4 @@ ccflags = Split('-D_KERNEL')
 
 libs = Split('rt pthread fuse dl z aio crypto')
 
-env.Program('zfs-9p', objects + env['OBJECTS'], CPPPATH = env['CPPPATH'] + cpppath, LIBS = libs, CCFLAGS = env['CCFLAGS'] + ccflags)
+env.Program('zfs-9p', objects + env['OBJECTS'], CPPPATH = env['CPPPATH'] + cpppath, LIBS = libs + env['LIBS'], CCFLAGS = env['CCFLAGS'] + ccflags)
