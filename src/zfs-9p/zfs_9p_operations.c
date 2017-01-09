@@ -670,7 +670,7 @@ p9_zfs_stat(Ixp9Req *r){
 
 void
 p9_zfs_open(Ixp9Req *r){
-	printf("p9_zfs_open\n");
+	printf("p9_zfs_open ID <%u>\n", r->fid->qid.path);
 	int error = 0;
 
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
@@ -970,6 +970,85 @@ p9_zfs_walk(Ixp9Req *r){
 	ixp_respond(r, NULL);
 }
 
+static void
+p9_zfs_freefid(IxpFid* fid){
+	printf("p9_zfs_freefid\n");
+	printf("fid ID <%u>\n", fid->qid.path);
+	zfsAux *z = fid->aux;
+	fid->aux = NULL;
+	free(z);
+	printf("Fin freefid\n");
+}
+
+static void
+p9_zfs_remove(Ixp9Req *r){
+	printf("p9_zfs_remove ID <%u>\n", r->fid->qid.path);
+	int error;
+	zfsAux *z = r->fid->aux;
+	vnode_t *vp = z->vp;
+	
+	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
+	ZFS_ENTER_9P(zfsvfs, error);
+	if(error){
+		ixp_respond(r, "ZFS_ENTER_9PError");
+		return;
+	}
+	
+	znode_t *znode;
+
+	error = zfs_zget(zfsvfs, r->fid->qid.path, &znode, B_FALSE);
+	if(error) {
+		ZFS_EXIT(zfsvfs);
+		/* If the inode we are trying to get was recently deleted
+		   dnode_hold_impl will return EEXIST instead of ENOENT */
+		char aux[6];
+		sprintf(aux, "%d", error);
+		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		return;
+	}
+	
+	if(znode==NULL){
+		ixp_respond(r,"znodenil");
+		return;
+	}
+	
+	vnode_t *dvp = ZTOV(znode);
+	
+	//Set credentials
+	cred_t cred;
+	cred.cr_uid=0;
+	cred.cr_gid=0;
+	
+	IxpQid qid = r->fid->qid;
+	char *msg=NULL;
+	
+	if (qid.type & P9_QTDIR){
+		error = VOP_RMDIR(dvp, z->name, NULL, &cred, NULL, 0);
+		if(error == EEXIST){
+			error = ENOTEMPTY;
+			msg = "Dir not empty";
+		} else if (error) {
+			msg = "Error removing directory";
+		}
+	} else {
+		error = VOP_REMOVE(dvp, z->name, &cred, NULL, 0);
+		msg = "Error removing file";
+	}
+	VN_RELE(dvp);
+	ZFS_EXIT(zfsvfs);
+	if (!error){
+		free(z);
+		r->fid->aux=NULL;
+	}
+	
+	ixp_respond(r, msg);
+	
+
+	return;
+
+}
+
+
 Ixp9Srv p9srv = {
 	.open=p9_zfs_open,
 	.walk=p9_zfs_walk,
@@ -979,7 +1058,7 @@ Ixp9Srv p9srv = {
 	.clunk=p9_zfs_clunk,
 //	.flush=
 	.attach=p9_zfs_attach,
-	.create=p9_zfs_create
-//	.remove=
-//	.freefid=
+	.create=p9_zfs_create,
+	.remove=p9_zfs_remove,
+	.freefid=p9_zfs_freefid
 };
