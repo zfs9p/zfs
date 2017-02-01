@@ -320,25 +320,27 @@ p9_zfs_create(Ixp9Req* r){
 	ixp_respond(r, NULL);
 }
 
-void
-p9_zfs_clunk(Ixp9Req *r){
-	print_debug("p9_zfs_clunk\n");
+
+int
+closeVp(Ixp9Req *r, char *err){
+	print_debug("closeVp\n");
 	int error = 0;
-	printf("clunck ID <%u>\n", r->fid->qid.path);
+	printf("closeVp ID <%u>\n", r->fid->qid.path);
 	zfsAux *z = r->fid->aux;
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
-		return;
+		err = ixp_estrdup("ZFS_ENTER_9PError");
+		return 0;
 	}
 	vnode_t *vp = z->vp;
 	if(vp == NULL){
-		ixp_respond(r, "filenotopen");
-		return;
+		err = ixp_estrdup("filenotopen");
+		return 0;
 	}
 	if(VTOZ(vp)->z_id != r->fid->qid.path){
-		ixp_respond(r, "badinode");
+		err = ixp_estrdup("badinode");
+		return 0;
 	}
 	/* Map flags */
 	int mode, flags, excl;
@@ -348,19 +350,33 @@ p9_zfs_clunk(Ixp9Req *r){
 	cred_t cred;
 	cred.cr_uid=0;
 	cred.cr_gid=0;
-
+	printf("Preparando cierre de archivo\n");
 	error = VOP_CLOSE(vp, flags, 1, (offset_t) 0, &cred, NULL);
+	printf("Archivo cerrado\n");
 
 	if(error){
-		ixp_respond(r, "clunkFailed");
-	}else{
-		//z->vp=NULL;
-		VN_RELE(vp);
-		ixp_respond(r, NULL);
+		printf("closeFailed\n");
+		err = ixp_estrdup("closeFailed");
+		printf("cerrando zfsvfs\n");
+		ZFS_EXIT(zfsvfs);
+		return 0;
 	}
-
-	ZFS_EXIT(zfsvfs);	
+	
+	VN_RELE(vp);
+	printf("cerrando zfsvfs\n");
+	ZFS_EXIT(zfsvfs);
+	return 1;
 }
+
+void
+p9_zfs_clunk(Ixp9Req *r){
+	printf("iniciando clunk\n");
+	char *err;
+	closeVp(r, err);
+	printf("Finalizando clunk\n");
+	ixp_respond(r, NULL);
+}
+
 
 void
 p9_zfs_write(Ixp9Req *r) {

@@ -51,7 +51,7 @@
 #include "util.h"
 
 #include <ixp.h>
- 
+
 static int ioctl_fd = -1;
 static int lock_fd = -1;
 
@@ -78,6 +78,7 @@ void *
 init_9p(void * v){
 		IxpConn *conn;
 
+        //char *address = "tcp!*!5640";
         char *address = "tcp!*!1441";
         int fd;
 
@@ -92,7 +93,7 @@ init_9p(void * v){
         printf("%s\n", ixp_errbuf());
 
         ixp_serverloop(&server);
-		
+
 		return NULL;
 }
 
@@ -430,7 +431,7 @@ int do_mount(char *spec, char *dir, int mflag, char *opt)
 	    return ENOMEM;
 	  }
 	}
-	
+
 	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
 
 	if(fuse_opt_add_arg(&args, "") == -1 ||
