@@ -16,6 +16,7 @@
 #include <syslog.h>
 
 #include <ixp.h>
+#include "error.h"
 #include "util.h"
 
 vfs_t *vfs_9p;
@@ -175,7 +176,7 @@ p9_zfs_attach(Ixp9Req* r){
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -186,14 +187,12 @@ p9_zfs_attach(Ixp9Req* r){
 		ZFS_EXIT(zfsvfs);
 		/* If the inode we are trying to get was recently deleted
 		   dnode_hold_impl will return EEXIST instead of ENOENT */
-		char aux[6];
-		sprintf(aux, "%d", error);
-		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		ixp_respond(r, error == EEXIST ? Enonexist : Egreg);
 		return;
 	}
 
 	if(znode==NULL){
-		ixp_respond(r,"znodenil");
+		ixp_respond(r,Ebadfd);
 		return;
 	}
 	vnode_t *vp = ZTOV(znode);
@@ -213,7 +212,7 @@ p9_zfs_attach(Ixp9Req* r){
 		VN_RELE(vp);
 
 	ZFS_EXIT(zfsvfs);
-	
+
 	zfsAux *z = ixp_emalloc(sizeof(zfsAux));
 	z->vp=vp;
 	z->name="/";
@@ -231,14 +230,15 @@ p9_zfs_create(Ixp9Req* r){
 	int error = 0;
 
 	if(r->ifcall.tcreate.name && strlen(r->ifcall.tcreate.name) >= MAXNAMELEN){
-		ixp_respond(r, "zfs_nameTooLong");
+		//Name file too long
+		ixp_respond(r, Ebadchar);
 		return;
 	}
 
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -258,14 +258,12 @@ p9_zfs_create(Ixp9Req* r){
 		ZFS_EXIT(zfsvfs);
 		/* If the inode we are trying to get was recently deleted
 		   dnode_hold_impl will return EEXIST instead of ENOENT */
-		char aux[6];
-		sprintf(aux, "%d", error);
-		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		ixp_respond(r, error == EEXIST ? Enonexist : Egreg);
 		return;
 	}
 
 	if(znode==NULL){
-		ixp_respond(r,"znodenil");
+		ixp_respond(r,Ebadfd);
 		return;
 	}
 	vnode_t *vp = ZTOV(znode);
@@ -330,16 +328,16 @@ closeVp(Ixp9Req *r, char *err){
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		err = ixp_estrdup("ZFS_ENTER_9PError");
+		err = ixp_estrdup(Eio);
 		return 0;
 	}
 	vnode_t *vp = z->vp;
 	if(vp == NULL){
-		err = ixp_estrdup("filenotopen");
+		err = ixp_estrdup(Ebadfd);
 		return 0;
 	}
 	if(VTOZ(vp)->z_id != r->fid->qid.path){
-		err = ixp_estrdup("badinode");
+		err = ixp_estrdup(Ebadfd);
 		return 0;
 	}
 	/* Map flags */
@@ -356,15 +354,16 @@ closeVp(Ixp9Req *r, char *err){
 
 	if(error){
 		printf("closeFailed\n");
-		err = ixp_estrdup("closeFailed");
+		err = ixp_estrdup(Eio);
 		printf("cerrando zfsvfs\n");
 		ZFS_EXIT(zfsvfs);
 		return 0;
 	}
-	
+
 	VN_RELE(vp);
 	printf("cerrando zfsvfs\n");
 	ZFS_EXIT(zfsvfs);
+	err = ixp_estrdup(Enoerror);
 	return 1;
 }
 
@@ -386,17 +385,17 @@ p9_zfs_write(Ixp9Req *r) {
 
 	vnode_t *vp = z->vp;
 	if(vp == NULL){
-		ixp_respond(r, "filenotopen");
+		ixp_respond(r, Ebadfd);
 		return;
 	}
 	if(VTOZ(vp)->z_id != r->fid->qid.path){
-		ixp_respond(r, "badinode");
+		ixp_respond(r, Ebadfd);
 	}
 
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -426,7 +425,7 @@ p9_zfs_write(Ixp9Req *r) {
 	r->ofcall.rwrite.count = r->ifcall.twrite.count - uio.uio_resid;
 
 	if(error){
-		ixp_respond(r, "writtingError");
+		ixp_respond(r, Eio);
 	} else {
 		ixp_respond(r, NULL);
 	}
@@ -438,21 +437,21 @@ void
 p9_zfs_readdir(Ixp9Req *r){
 	print_debug("p9_zfs_readdir\n");
 	int error = 0;
-	
+
 	zfsAux *z=r->fid->aux;
 	vnode_t *vp = z->vp;
 	if(vp == NULL){
-		ixp_respond(r, "dirnotopen");
+		ixp_respond(r, Ebadfd);
 		return;
 	}
 	if(VTOZ(vp)->z_id != r->fid->qid.path){
-		ixp_respond(r, "badinode");
+		ixp_respond(r, Ebadfd);
 	}
 
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -503,7 +502,7 @@ p9_zfs_readdir(Ixp9Req *r){
 
 		error = VOP_READDIR(vp, &uio, &cred, &eofp, NULL, 0);
 		if(error){
-			errstr="errorReadDir";
+			errstr=Eio;
 			break;
 		}
 		/* No more directory entries */
@@ -512,7 +511,7 @@ p9_zfs_readdir(Ixp9Req *r){
 
 		error = zfs_zget(zfsvfs, entry.dirent.d_ino, &znode, B_TRUE);
 		if(error){
-			errstr="errorZGet";
+			errstr=Eio;
 			break;
 		}
 
@@ -524,7 +523,7 @@ p9_zfs_readdir(Ixp9Req *r){
 		VN_RELE(vp);
 
 		if(error){
-			errstr="errorZStat";
+			errstr=Ebadstat;
 			break;
 		}
 
@@ -561,27 +560,27 @@ p9_zfs_read(Ixp9Req *r) {
 	}
 
 	int error = 0;
-	
+
 	zfsAux *z = r->fid->aux;
 	vnode_t *vp = z->vp;
 	if(vp == NULL){
-		ixp_respond(r, "filenotopen");
+		ixp_respond(r, Ebadfd);
 		return;
 	}
 	if(VTOZ(vp)->z_id != r->fid->qid.path){
-		ixp_respond(r, "badinode");
+		ixp_respond(r, Ebadfd);
 	}
 
 	char *outbuf = ixp_emallocz(r->ifcall.tread.count);
 	if(outbuf == NULL){
-		ixp_respond(r, "nomemory");
+		ixp_respond(r, Egreg);
 		return;
 	}
 
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -612,7 +611,7 @@ p9_zfs_read(Ixp9Req *r) {
 	r->ofcall.rread.count=uio.uio_loffset - r->ifcall.tread.offset;
 
 	if(error){
-		ixp_respond(r,"readingError");
+		ixp_respond(r,Eio);
 	} else {
 		ixp_respond(r, NULL);
 	}
@@ -629,7 +628,7 @@ p9_zfs_stat(Ixp9Req *r){
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -640,14 +639,12 @@ p9_zfs_stat(Ixp9Req *r){
 		ZFS_EXIT(zfsvfs);
 		/* If the inode we are trying to get was recently deleted
 		   dnode_hold_impl will return EEXIST instead of ENOENT */
-		char aux[6];
-		sprintf(aux, "%d", error);
-		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		ixp_respond(r, error == EEXIST ? Enonexist : Egreg);
 		return;
 	}
 
 	if(znode==NULL){
-		ixp_respond(r,"znodenil");
+		ixp_respond(r,Ebadfd);
 		return;
 	}
 	vnode_t *vp = ZTOV(znode);
@@ -664,12 +661,12 @@ p9_zfs_stat(Ixp9Req *r){
 	ZFS_EXIT(zfsvfs);
 
 	if(error){
-		ixp_respond(r, "zStatError");
+		ixp_respond(r, Ebadstat);
 	} else {
 		IxpStat s;
-		
+
 		char *name = z->name;
-		
+
 		dostat(&s, name, &stbuf);
 		r->fid->qid = s.qid;
 		r->ofcall.rstat.nstat = ixp_sizeof_stat(&s);
@@ -692,7 +689,7 @@ p9_zfs_open(Ixp9Req *r){
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
 
@@ -703,14 +700,12 @@ p9_zfs_open(Ixp9Req *r){
 		ZFS_EXIT(zfsvfs);
 		/* If the inode we are trying to get was recently deleted
 		   dnode_hold_impl will return EEXIST instead of ENOENT */
-		char aux[6];
-		sprintf(aux, "%d", error);
-		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		ixp_respond(r, error == EEXIST ? Enonexist : Egreg);
 		return;
 	}
 
 	if(znode==NULL){
-		ixp_respond(r,"znodenil");
+		ixp_respond(r,Ebadfd);
 		return;
 	}
 	vnode_t *vp = ZTOV(znode);
@@ -725,16 +720,16 @@ p9_zfs_open(Ixp9Req *r){
 	mapFlags(r->ifcall.tcreate.mode, &mode, &flags, &excl);
 
 	if(r->fid->qid.type & P9_QTDIR){
-		error = openDir(vp, mode, flags, cred); 
+		error = openDir(vp, mode, flags, cred);
 	} else {
-		error = openFile(vp, mode, flags, cred); 
+		error = openFile(vp, mode, flags, cred);
 	}
 
 	if(error)
 		VN_RELE(vp);
 
 	ZFS_EXIT(zfsvfs);
-	
+
 	zfsAux *z = r->fid->aux;
 	z->vp = vp;
 	r->fid->qid.path=VTOZ(vp)->z_id;
@@ -771,7 +766,7 @@ getZNode(uint64_t inode){
 int getInode(uint64_t parentID, char * name){
 	int error = 0;
 	uint64_t ino;
-	
+
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
@@ -784,9 +779,9 @@ int getInode(uint64_t parentID, char * name){
 		ZFS_EXIT(zfsvfs);
 		return 0;
 	}
-	
+
 	vnode_t *vp = ZTOV(znode);
-	
+
 	//Set credentials
 	cred_t cred;
 	cred.cr_uid=0;
@@ -796,16 +791,16 @@ int getInode(uint64_t parentID, char * name){
 	mode = VREAD;
 	flags = FREAD;
 	excl=NONEXCL;
-	
+
 	if(openDir(vp, mode, flags, cred)){
 		return 0;
 	}
-	
+
 	union {
 		char buf[DIRENT64_RECLEN(MAXNAMELEN)];
 		struct dirent64 dirent;
 	} entry;
-	
+
 	iovec_t iovec;
 	uio_t uio;
 	uio.uio_iov = &iovec;
@@ -813,29 +808,29 @@ int getInode(uint64_t parentID, char * name){
 	uio.uio_segflg = UIO_SYSSPACE;
 	uio.uio_fmode = 0;
 	uio.uio_llimit = RLIM64_INFINITY;
-	
+
 	int eofp = 0;
 	int outbuf_off = 0;
 	int outbuf_resid = 10240;
 	off_t next = 0;
-	
+
 	for(;;) {
 		iovec.iov_base = entry.buf;
 		iovec.iov_len = sizeof(entry.buf);
 		uio.uio_resid = iovec.iov_len;
 		uio.uio_loffset = next;
-		
+
 		if(VOP_READDIR(vp, &uio, &cred, &eofp, NULL, 0)){
 			ino = 0;
 			break;
 		}
-		
+
 		/* No more directory entries */
 		if(iovec.iov_base == entry.buf){
 			ino = 1;
 			break;
 		}
-		
+
 		if(strcmp(entry.dirent.d_name, name) == 0 ){
 			ino = entry.dirent.d_ino;
 			break;
@@ -845,9 +840,9 @@ int getInode(uint64_t parentID, char * name){
 	}
 	if(!VOP_CLOSE(vp, flags, 1, (offset_t) 0, &cred, NULL))
 		VN_RELE(vp);
-	
+
 	ZFS_EXIT(zfsvfs);
-	
+
 	return ino;
 }
 
@@ -881,16 +876,16 @@ getZID(znode_t *parentIno, char *name, enum vtype *nodeType){
 	mode = VREAD;
 	flags = FREAD;
 	excl=NONEXCL;
-	
+
 	if(openDir(vp, mode, flags, cred)){
 		return 0;
 	}
-	
+
 	union {
 		char buf[DIRENT64_RECLEN(MAXNAMELEN)];
 		struct dirent64 dirent;
 	} entry;
-	
+
 	iovec_t iovec;
 	uio_t uio;
 	uio.uio_iov = &iovec;
@@ -898,27 +893,27 @@ getZID(znode_t *parentIno, char *name, enum vtype *nodeType){
 	uio.uio_segflg = UIO_SYSSPACE;
 	uio.uio_fmode = 0;
 	uio.uio_llimit = RLIM64_INFINITY;
-	
+
 	int eofp = 0;
 	int outbuf_off = 0;
 	int outbuf_resid = 10240;
 	off_t next = 0;
-	
+
 	for(;;) {
 		iovec.iov_base = entry.buf;
 		iovec.iov_len = sizeof(entry.buf);
 		uio.uio_resid = iovec.iov_len;
 		uio.uio_loffset = next;
-		
+
 		if(VOP_READDIR(vp, &uio, &cred, &eofp, NULL, 0)){
 			return 0;
 		}
-		
+
 		/* No more directory entries */
 		if(iovec.iov_base == entry.buf){
 			return 1;
 		}
-		
+
 		if(strcmp(entry.dirent.d_name, name) == 0 ){
 			ino = entry.dirent.d_ino;
 			break;
@@ -936,10 +931,10 @@ getZID(znode_t *parentIno, char *name, enum vtype *nodeType){
 		ZFS_EXIT(zfsvfs);
 		return 0;
 	}
-	
+
 	*nodeType=ZTOV(va)->v_type;
 	ZFS_EXIT(zfsvfs);
-	
+
 	return ino;
 }
 
@@ -958,11 +953,11 @@ p9_zfs_walk(Ixp9Req *r){
 		id = getInode(id, r->ifcall.twalk.wname[i]);
 		switch(id){
 			case 0:
-				ixp_respond(r, "ErrorWalk");
+				ixp_respond(r, Eio);
 				return;
 			case 1:
 				//Not exist
-				ixp_respond(r, "file not found");
+				ixp_respond(r, Enonexist);
 				return;
 			default:
 				zn = getZNode(id);
@@ -1002,14 +997,14 @@ p9_zfs_remove(Ixp9Req *r){
 	int error;
 	zfsAux *z = r->fid->aux;
 	vnode_t *vp = z->vp;
-	
+
 	zfsvfs_t *zfsvfs = vfs_9p->vfs_data;
 	ZFS_ENTER_9P(zfsvfs, error);
 	if(error){
-		ixp_respond(r, "ZFS_ENTER_9PError");
+		ixp_respond(r, Eio);
 		return;
 	}
-	
+
 	znode_t *znode;
 
 	error = zfs_zget(zfsvfs, r->fid->qid.path, &znode, B_FALSE);
@@ -1017,38 +1012,36 @@ p9_zfs_remove(Ixp9Req *r){
 		ZFS_EXIT(zfsvfs);
 		/* If the inode we are trying to get was recently deleted
 		   dnode_hold_impl will return EEXIST instead of ENOENT */
-		char aux[6];
-		sprintf(aux, "%d", error);
-		ixp_respond(r, error == EEXIST ? "ENOENT" : aux);
+		ixp_respond(r, error == EEXIST ? Enonexist : Egreg);
 		return;
 	}
-	
+
 	if(znode==NULL){
-		ixp_respond(r,"znodenil");
+		ixp_respond(r,Ebadfd);
 		return;
 	}
-	
+
 	vnode_t *dvp = ZTOV(znode);
-	
+
 	//Set credentials
 	cred_t cred;
 	cred.cr_uid=0;
 	cred.cr_gid=0;
-	
+
 	IxpQid qid = r->fid->qid;
 	char *msg=NULL;
-	
+
 	if (qid.type & P9_QTDIR){
 		error = VOP_RMDIR(dvp, z->name, NULL, &cred, NULL, 0);
 		if(error == EEXIST){
 			error = ENOTEMPTY;
 			msg = "Dir not empty";
 		} else if (error) {
-			msg = "Error removing directory";
+			msg = Eio;
 		}
 	} else {
 		error = VOP_REMOVE(dvp, z->name, &cred, NULL, 0);
-		msg = "Error removing file";
+		msg = Eio;
 	}
 	VN_RELE(dvp);
 	ZFS_EXIT(zfsvfs);
@@ -1056,9 +1049,9 @@ p9_zfs_remove(Ixp9Req *r){
 		free(z);
 		r->fid->aux=NULL;
 	}
-	
+
 	ixp_respond(r, msg);
-	
+
 
 	return;
 
